@@ -1,7 +1,6 @@
 # Sprawozdanie - Zadanie 2 (Łańcuch CI/CD w GitHub Actions)
-
-## 1. Opis zrealizowanego łańcucha 
 Autor: Jakub Gwozdowski
+## 1. Opis zrealizowanego łańcucha 
 Zgodnie z wymaganiami zadania, przygotowano łańcuch GitHub Actions (`.github/workflows/ci.yml`), który automatyzuje proces budowania, skanowania i publikacji obrazu kontenera.
 
 Etapy działania łańcucha:
