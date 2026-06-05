@@ -1,36 +1,51 @@
+# Nazwa łańcucha 
 name: Build, Scan and Push Docker Image
 
+# Sekcja określająca, kiedy łańcuch ma się uruchomić - w tym przypadku: przy każdym poleceniu "git push" na gałąź "main".
 on:
   push:
     branches: [ "main" ]
 
+# Zmienne środowiskowe, które ułatwiają zarządzanie nazwami i linkami.
 env:
+  # Wymusza użycie nowszego środowiska Node.js 
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Dynamicznie generuje link do obrazu 
   GHCR_IMAGE_NAME: ghcr.io/${{ github.repository }}
+  # Ustawia repozytorium na DockerHubie
   DOCKERHUB_CACHE_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/pogoda-app-cache
 
 jobs:
   build-scan-push:
+    # Serwer, na którym uruchomi się łańcuch 
     runs-on: ubuntu-latest
+    
+    # Uprawnienia 
     permissions:
       contents: read
       packages: write
 
     steps:
+      # Krok 1: Kopia kodu z repo na maszynę wirtualną GitHub Actions
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Krok 2: Konfiguruje emulator QEMU, do budowania obrazów dla innych architektur 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
+      # Krok 3: Uruchamia silnik Docker Buildx 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Krok 4: Logowanie do DockerHuba używając sekretów 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Krok 5: Logowanie do GitHub Container Registry 
       - name: Log in to GitHub Container Registry (GHCR)
         uses: docker/login-action@v3
         with:
@@ -38,6 +53,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Krok 6: Generator tagów. Automatycznie przypisze tag "latest" oraz unikalny hash commita 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -47,8 +63,9 @@ jobs:
             type=sha,format=short
             type=raw,value=latest
 
-      # ETAP 1: Budowa lokalnego obrazu i skanowanie (Trivy)
-      # Obraz nie zostaje jeszcze nigdzie wysłany, by zapobiec publikacji luk
+      # --- ETAP TESTOWY (BEZ PUBLIKACJI) ---
+      
+      # Krok 7: Buduje obraz tylko na lokalną maszynę, bez wysyłania go. Korzysta z cache z DockerHuba, co przyspiesza proces.
       - name: Build local image for scanning
         uses: docker/build-push-action@v5
         with:
@@ -57,6 +74,7 @@ jobs:
           tags: local-scan-image:latest
           cache-from: type=registry,ref=${{ env.DOCKERHUB_CACHE_REPO }}:main
 
+      # Krok 8: Skaner podatności Trivy. Sprawdza "local-scan-image:latest". Jeśli znajdzie błędy CRITICAL lub HIGH, zwróci exit-code 1 i zatrzyma łańcuch.
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
@@ -67,7 +85,10 @@ jobs:
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
 
-      # ETAP 2: Budowa multi-arch i publikacja (wykona się tylko, jeśli skaner nie zwróci błędów)
+      # --- ETAP WŁAŚCIWY (PUBLIKACJA MULTI-ARCH) ---
+
+      # Krok 9: Uruchomi się, jeśli skaner Trivy wykaże 0 błędów.
+      # Buduje obraz na obie architektury, nadaje mu tagi oraz wysyła go na GitHuba i zapisuje świeży cache na DockerHub.
       - name: Build and push multi-arch image
         if: success()
         uses: docker/build-push-action@v5
